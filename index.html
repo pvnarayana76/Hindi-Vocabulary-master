@@ -1,1 +1,209 @@
 
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hindi Visual Word Builder</title>
+    <style>
+        /* Compact layout to fit Acer IFP frame */
+        body { 
+            font-family: 'Segoe UI', Tahoma, sans-serif; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background-color: #f0f2f5; margin: 0; height: 100vh; overflow: hidden; padding: 10px;
+        }
+        #game-board { 
+            background: white; padding: 15px 25px; border-radius: 20px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; 
+            max-width: 550px; width: 100%; 
+        }
+        h2 { margin: 0 0 8px 0; font-size: 22px; color: #333; }
+        #word-image { 
+            width: 150px; height: 150px; object-fit: contain; 
+            margin-bottom: 8px; border-radius: 10px; border: 2px solid #eee; background: #fff;
+        }
+        .area-label { font-size: 11px; color: #888; margin: 3px 0; text-transform: uppercase; }
+        #answer-box, #scrambled-box { 
+            min-height: 55px; border-radius: 10px; display: flex; 
+            justify-content: center; align-items: center; gap: 8px; 
+            padding: 8px; margin-bottom: 10px; background: #fafafa; flex-wrap: wrap; 
+        }
+        #answer-box { border: 2px dashed #ddd; }
+        .letter-tile { 
+            background-color: #e91e63; color: white; font-size: 22px; 
+            padding: 6px 14px; border-radius: 8px; cursor: pointer; 
+            user-select: none; box-shadow: 0 3px 0 #ad1457; transition: 0.1s; 
+        }
+        .letter-tile:active { transform: translateY(2px); box-shadow: 0 1px 0 #ad1457; }
+        button { 
+            color: white; border: none; padding: 10px 20px; font-size: 14px; 
+            font-weight: bold; margin: 4px; cursor: pointer; border-radius: 8px; transition: 0.3s; 
+        }
+        #clear-btn { background-color: #f4b400; }
+        #skip-btn { background-color: #9c27b0; }
+        #pronounce-btn { background-color: #1a73e8; }
+        #pronounce-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        #next-btn { background-color: #34a853; display: none; }
+        #status-message { font-size: 18px; font-weight: bold; height: 25px; margin: 8px 0; }
+        .stats { 
+            margin-top: 15px; display: flex; justify-content: space-around; 
+            border-top: 1px solid #eee; padding-top: 10px; font-size: 16px; font-weight: bold; 
+        }
+        #marks-display { color: #e91e63; }
+        #voice-check { font-size: 10px; color: #bbb; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="game-board">
+    <h2>Hindi Vocabulary Master</h2>
+    <img id="word-image" src="" alt="Word Image">
+    
+    <div class="area-label">Your Answer</div>
+    <div id="answer-box"></div>
+
+    <div class="area-label">Available Letters</div>
+    <div id="scrambled-box"></div>
+    
+    <div id="status-message"></div>
+    
+    <div class="controls">
+        <button id="clear-btn" onclick="clearAnswer()">🔄 Reset</button>
+        <button id="skip-btn" onclick="skipWord()">⏭️ Skip</button>
+        <button id="pronounce-btn" onclick="pronounceWord()" disabled>🔊 Pronounce</button>
+        <button id="next-btn" onclick="nextWord()">Next Word ➡️</button>
+    </div>
+    
+    <div class="stats">
+        <div id="word-count">Word 1 of 124</div>
+        <div id="marks-display">Marks: 0</div>
+    </div>
+    <div id="voice-check">Initializing Voice...</div>
+</div>
+
+<script>
+    // --- Audio Logic for Effects ---
+    const clapSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3');
+    const wrongSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2959/2959-preview.mp3');
+
+    // --- Safety Checks for Limited Environments ---
+    // Fixes "ReferenceError: SpeechSynthesisUtterance is not defined"
+    const speechSupported = (typeof window !== 'undefined') && (typeof window.speechSynthesis !== 'undefined') && (typeof SpeechSynthesisUtterance !== 'undefined');
+
+    const words = [
+        { img: "images/naman.jpg", hi: "नमन" }, { img: "images/aara.jpg", hi: "आरा" }, { img: "images/anar.jpg", hi: "अनार" },
+        { img: "images/kisan.jpg", hi: "किसान" }, { img: "images/neem.jpg", hi: "नीम" }, { img: "images/machali.jpg", hi: "मीन" },
+        { img: "images/belan.jpg", hi: "बेलन" }, { img: "images/myna.jpg", hi: "मैना" }, { img: "images/bagh.jpg", hi: "बाघ" }, { img: "images/hathi.jpg", hi: "हाथी" }
+        // ... Add more as needed
+    ];
+
+    let currentIndex = 0, currentMarks = 0, currentHindiWord = "", availableLetters = [], selectedLetters = [];
+
+    function getSyllables(word) {
+        try {
+            const segmenter = new Intl.Segmenter('hi-IN', { granularity: 'grapheme' });
+            return Array.from(segmenter.segment(word)).map(s => s.segment);
+        } catch (e) {
+            return word.match(/[\u0900-\u097F][\u093E-\u094D\u0901-\u0903]?/g) || word.split('');
+        }
+    }
+
+    function loadWord() {
+        if (currentIndex >= words.length) {
+            document.getElementById("game-board").innerHTML = `<h2 style='margin-top:20px'>Final Score</h2><h1 style='color:#e91e63'>${currentMarks} / ${words.length}</h1><button onclick="location.reload()" style="background:#1a73e8; padding:15px 30px">Restart Exam</button>`;
+            return;
+        }
+        
+        const currentData = words[currentIndex];
+        currentHindiWord = currentData.hi;
+        document.getElementById("word-image").src = currentData.img;
+        document.getElementById("word-count").innerText = `Word ${currentIndex + 1} of ${words.length}`;
+        document.getElementById("marks-display").innerText = `Marks: ${currentMarks}`;
+
+        availableLetters = getSyllables(currentHindiWord).sort(() => Math.random() - 0.5);
+        selectedLetters = [];
+
+        document.getElementById("status-message").innerText = "";
+        document.getElementById("pronounce-btn").disabled = true; 
+        document.getElementById("next-btn").style.display = "none";
+        document.getElementById("skip-btn").style.display = "inline-block";
+        document.getElementById("clear-btn").style.display = "inline-block";
+        updateUI();
+    }
+
+    function moveLetter(index, fromAvailable) {
+        if (fromAvailable) { selectedLetters.push(availableLetters[index]); availableLetters.splice(index, 1); }
+        else { availableLetters.push(selectedLetters[index]); selectedLetters.splice(index, 1); }
+        updateUI();
+        checkWinCondition();
+    }
+
+    function updateUI() {
+        const sBox = document.getElementById("scrambled-box"), aBox = document.getElementById("answer-box");
+        sBox.innerHTML = ""; aBox.innerHTML = "";
+        availableLetters.forEach((l, i) => { const d = document.createElement("div"); d.className = "letter-tile"; d.innerText = l; d.onclick = () => moveLetter(i, true); sBox.appendChild(d); });
+        selectedLetters.forEach((l, i) => { const d = document.createElement("div"); d.className = "letter-tile"; d.innerText = l; d.onclick = () => moveLetter(i, false); aBox.appendChild(d); });
+    }
+
+    function checkWinCondition() {
+        if (selectedLetters.join("") === currentHindiWord) {
+            currentMarks++;
+            document.getElementById("marks-display").innerText = `Marks: ${currentMarks}`;
+            document.getElementById("status-message").innerText = "Correct! 🎯";
+            document.getElementById("status-message").style.color = "#34a853";
+            clapSound.play().catch(() => {});
+            
+            // Only unlock if voice is supported by the editor's viewer
+            if (speechSupported) {
+                document.getElementById("pronounce-btn").disabled = false;
+            }
+            
+            document.getElementById("next-btn").style.display = "inline-block";
+            document.getElementById("clear-btn").style.display = "none";
+            document.getElementById("skip-btn").style.display = "none";
+            document.querySelectorAll("#answer-box .letter-tile").forEach(t => t.onclick = null);
+        } else if (availableLetters.length === 0) {
+            document.getElementById("status-message").innerText = "Try again! 🔄";
+            document.getElementById("status-message").style.color = "#ea4335";
+            wrongSound.play().catch(() => {});
+        }
+    }
+
+    function clearAnswer() { availableLetters = availableLetters.concat(selectedLetters); selectedLetters = []; updateUI(); document.getElementById("status-message").innerText = ""; }
+
+    function pronounceWord() {
+        // Fixes "Cannot read properties of undefined (reading 'cancel')"
+        if (!speechSupported) return;
+        
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(currentHindiWord);
+        u.lang = 'hi-IN';
+        window.speechSynthesis.speak(u);
+    }
+    
+    function skipWord() { currentIndex++; loadWord(); }
+    function nextWord() { currentIndex++; loadWord(); }
+
+    document.addEventListener('click', () => {
+        clapSound.load(); wrongSound.load();
+        if (speechSupported) {
+            const silent = new SpeechSynthesisUtterance("");
+            window.speechSynthesis.speak(silent);
+        }
+    }, { once: true });
+
+    window.onload = loadWord;
+
+    // Safety check for voice status label
+    if (speechSupported) {
+        window.speechSynthesis.onvoiceschanged = () => {
+            if (window.speechSynthesis.getVoices().some(v => v.lang.includes('hi'))) 
+                document.getElementById("voice-check").innerText = "Voice Ready!";
+        };
+    } else {
+        document.getElementById("voice-check").innerText = "Voice engine not found in this editor.";
+    }
+</script>
+
+</body>
+</html>
