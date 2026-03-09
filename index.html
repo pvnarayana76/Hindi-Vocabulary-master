@@ -123,7 +123,7 @@
     let usedPronounce = false;
     let solvedWordsGlobal = new Set(); 
 
-    // --- RANDOMIZER & TAGGING LOGIC ---
+    // --- RANDOMIZER LOGIC ---
     function shuffleArray(array) {
         let shuffled = array.slice();
         for (let i = shuffled.length - 1; i > 0; i--) {
@@ -135,15 +135,14 @@
 
     function buildAllWordsList() {
         let allWords = [];
+        // The exact order to teach the lessons
         const lessonOrder = [1, 2, 3, 4, 5, 6, 7, 8, 9, "animals", "veggies", "flowers"];
         
         for (let key of lessonOrder) {
             if (lessonsData[key]) {
-                // TAG THE WORD: Secretly attach the lesson origin to every word!
-                let taggedWords = lessonsData[key].words.map(word => {
-                    return { ...word, lessonOrigin: key };
-                });
-                let shuffledLessonWords = shuffleArray(taggedWords);
+                // Shuffle the words INSIDE this specific lesson
+                let shuffledLessonWords = shuffleArray(lessonsData[key].words);
+                // Attach the newly shuffled block to the master list
                 allWords = allWords.concat(shuffledLessonWords);
             }
         }
@@ -165,13 +164,9 @@
         const selectedLesson = document.getElementById("lesson-select").value;
         
         if (selectedLesson === 'all') {
-            currentWordList = buildAllWordsList(); 
+            currentWordList = buildAllWordsList(); // Shuffles within each lesson sequentially
         } else {
-            // Tag words here as well just to be safe
-            let taggedWords = lessonsData[selectedLesson].words.map(word => {
-                return { ...word, lessonOrigin: selectedLesson };
-            });
-            currentWordList = shuffleArray(taggedWords); 
+            currentWordList = shuffleArray(lessonsData[selectedLesson].words); // Shuffles the specific lesson
         }
         
         currentIndex = 0; 
@@ -225,9 +220,7 @@
 
         const currentLevel = document.getElementById("level-select").value;
         if (currentLevel === "2") {
-            // Check the SECRET TAG instead of the dropdown menu!
-            let wordOrigin = currentWordList[currentIndex].lessonOrigin;
-            let allowedLetters = getCumulativeLetters(wordOrigin);
+            let allowedLetters = getCumulativeLetters(document.getElementById("lesson-select").value);
             let extraCount = Math.floor(Math.random() * 2) + 1; 
             for(let i = 0; i < extraCount; i++) {
                 let randomLetter = allowedLetters[Math.floor(Math.random() * allowedLetters.length)];
@@ -279,4 +272,9 @@
                 
                 currentMarks += pointsEarned;
                 solvedWordsGlobal.add(currentHindiWord);
-                document.getElementById("status-message").innerText 
+                document.getElementById("status-message").innerText = `Correct! +${pointsEarned} Points 🎯`;
+            } else {
+                document.getElementById("status-message").innerText = "Correct! (Already Solved) 🎯";
+            }
+            
+            document.getElementById("marks-display").innerText = `Marks: ${cur
