@@ -277,4 +277,79 @@
                 document.getElementById("status-message").innerText = "Correct! (Already Solved) 🎯";
             }
             
-            document.getElementById("marks-display").innerText = `Marks: ${cur
+            document.getElementById("marks-display").innerText = `Marks: ${currentMarks}`;
+            document.getElementById("status-message").style.color = "#34a853";
+            clapSound.play().catch(() => {});
+            
+            if (speechSupported) document.getElementById("pronounce-btn").disabled = false;
+            
+            document.getElementById("next-btn").style.display = "inline-block";
+            document.getElementById("clear-btn").style.display = "none";
+            document.getElementById("skip-btn").style.display = "none";
+            document.querySelectorAll("#answer-box .letter-tile").forEach(t => t.onclick = null);
+            
+        } else if (selectedLetters.length === currentHindiWord.length) {
+            document.getElementById("status-message").innerText = "Try again! ❌";
+            document.getElementById("status-message").style.color = "#d32f2f";
+            wrongSound.play().catch(() => {});
+            document.getElementById("pronounce-btn").disabled = true;
+        } else {
+            document.getElementById("status-message").innerText = "";
+            document.getElementById("pronounce-btn").disabled = true;
+        }
+    }
+
+    function updateUI() {
+        const sBox = document.getElementById("scrambled-box");
+        const aBox = document.getElementById("answer-box");
+        sBox.innerHTML = ""; 
+        aBox.innerHTML = "";
+        availableLetters.forEach((l, i) => { const d = document.createElement("div"); d.className = "letter-tile"; d.innerText = l; d.onclick = () => moveLetter(i, true); sBox.appendChild(d); });
+        selectedLetters.forEach((l, i) => { const d = document.createElement("div"); d.className = "letter-tile"; d.innerText = l; d.onclick = () => moveLetter(i, false); aBox.appendChild(d); });
+    }
+
+    function pronounceWord() {
+        if (!speechSupported) return;
+        usedPronounce = true; 
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(currentHindiWord);
+        u.lang = 'hi-IN';
+        window.speechSynthesis.speak(u);
+    }
+
+    function prevWord() { 
+        if (currentIndex > 0) {
+            currentIndex--; 
+            loadWord(); 
+        }
+    }
+    
+    function skipWord() { currentIndex++; loadWord(); }
+    function nextWord() { currentIndex++; loadWord(); }
+    
+    function clearAnswer() { 
+        availableLetters = availableLetters.concat(selectedLetters); 
+        selectedLetters = []; 
+        updateUI(); 
+        if (speechSupported && !solvedWordsGlobal.has(currentHindiWord)) {
+            document.getElementById("pronounce-btn").disabled = false;
+        }
+    }
+
+    // Start game
+    window.onload = () => {
+        changeLesson();
+    };
+
+    if (speechSupported) {
+        window.speechSynthesis.onvoiceschanged = () => {
+            if (window.speechSynthesis.getVoices().some(v => v.lang.includes('hi'))) {
+                document.getElementById("voice-info").innerText = "Voice Ready!";
+            }
+        };
+    } else {
+        document.getElementById("voice-info").innerText = "Voice not supported in this browser.";
+    }
+</script>
+</body>
+</html>
