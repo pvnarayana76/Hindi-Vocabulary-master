@@ -94,7 +94,6 @@
     const wrongSound = new Audio('wrong.mp3');
     const speechSupported = (typeof window !== 'undefined') && (typeof window.speechSynthesis !== 'undefined') && (typeof window.SpeechSynthesisUtterance !== 'undefined');
 
-    // Master list of letters for advanced lessons
     const masterAlphabet = ['अ','आ','इ','ई','उ','ऊ','ऋ','ए','ऐ','ओ','औ','क','ख','ग','घ','च','छ','ज','झ','ट','ठ','ड','ड़','ढ','त','थ','द','ध','न','प','फ','ब','भ','म','य','र','ल','व','श','ष','स','ह','क्ष','त्र','ज्ञ','श्र'];
 
     // --- LESSON DATA ---
@@ -122,8 +121,8 @@
     let selectedLetters = [];
     let usedPronounce = false;
     let solvedWordsGlobal = new Set(); 
+    let targetTileCount = 0; // NEW: Keeps track of exactly how many tiles the correct answer uses!
 
-    // --- RANDOMIZER LOGIC ---
     function shuffleArray(array) {
         let shuffled = array.slice();
         for (let i = shuffled.length - 1; i > 0; i--) {
@@ -135,14 +134,14 @@
 
     function buildAllWordsList() {
         let allWords = [];
-        // The exact order to teach the lessons
         const lessonOrder = [1, 2, 3, 4, 5, 6, 7, 8, 9, "animals", "veggies", "flowers"];
         
         for (let key of lessonOrder) {
             if (lessonsData[key]) {
-                // Shuffle the words INSIDE this specific lesson
-                let shuffledLessonWords = shuffleArray(lessonsData[key].words);
-                // Attach the newly shuffled block to the master list
+                let taggedWords = lessonsData[key].words.map(word => {
+                    return { ...word, lessonOrigin: key };
+                });
+                let shuffledLessonWords = shuffleArray(taggedWords);
                 allWords = allWords.concat(shuffledLessonWords);
             }
         }
@@ -164,9 +163,12 @@
         const selectedLesson = document.getElementById("lesson-select").value;
         
         if (selectedLesson === 'all') {
-            currentWordList = buildAllWordsList(); // Shuffles within each lesson sequentially
+            currentWordList = buildAllWordsList(); 
         } else {
-            currentWordList = shuffleArray(lessonsData[selectedLesson].words); // Shuffles the specific lesson
+            let taggedWords = lessonsData[selectedLesson].words.map(word => {
+                return { ...word, lessonOrigin: selectedLesson };
+            });
+            currentWordList = shuffleArray(taggedWords); 
         }
         
         currentIndex = 0; 
@@ -213,14 +215,18 @@
 
         try {
             const segmenter = new Intl.Segmenter('hi-IN', { granularity: 'grapheme' });
-            availableLetters = Array.from(segmenter.segment(currentHindiWord)).map(s => s.segment);
+            let segmented = Array.from(segmenter.segment(currentHindiWord)).map(s => s.segment);
+            targetTileCount = segmented.length; // Set exact tile count
+            availableLetters = [...segmented];
         } catch(e) {
+            targetTileCount = currentHindiWord.length;
             availableLetters = currentHindiWord.split('');
         }
 
         const currentLevel = document.getElementById("level-select").value;
         if (currentLevel === "2") {
-            let allowedLetters = getCumulativeLetters(document.getElementById("lesson-select").value);
+            let wordOrigin = currentWordList[currentIndex].lessonOrigin;
+            let allowedLetters = getCumulativeLetters(wordOrigin);
             let extraCount = Math.floor(Math.random() * 2) + 1; 
             for(let i = 0; i < extraCount; i++) {
                 let randomLetter = allowedLetters[Math.floor(Math.random() * allowedLetters.length)];
@@ -272,84 +278,4 @@
                 
                 currentMarks += pointsEarned;
                 solvedWordsGlobal.add(currentHindiWord);
-                document.getElementById("status-message").innerText = `Correct! +${pointsEarned} Points 🎯`;
-            } else {
-                document.getElementById("status-message").innerText = "Correct! (Already Solved) 🎯";
-            }
-            
-            document.getElementById("marks-display").innerText = `Marks: ${currentMarks}`;
-            document.getElementById("status-message").style.color = "#34a853";
-            clapSound.play().catch(() => {});
-            
-            if (speechSupported) document.getElementById("pronounce-btn").disabled = false;
-            
-            document.getElementById("next-btn").style.display = "inline-block";
-            document.getElementById("clear-btn").style.display = "none";
-            document.getElementById("skip-btn").style.display = "none";
-            document.querySelectorAll("#answer-box .letter-tile").forEach(t => t.onclick = null);
-            
-        } else if (selectedLetters.length === currentHindiWord.length) {
-            document.getElementById("status-message").innerText = "Try again! ❌";
-            document.getElementById("status-message").style.color = "#d32f2f";
-            wrongSound.play().catch(() => {});
-            document.getElementById("pronounce-btn").disabled = true;
-        } else {
-            document.getElementById("status-message").innerText = "";
-            document.getElementById("pronounce-btn").disabled = true;
-        }
-    }
-
-    function updateUI() {
-        const sBox = document.getElementById("scrambled-box");
-        const aBox = document.getElementById("answer-box");
-        sBox.innerHTML = ""; 
-        aBox.innerHTML = "";
-        availableLetters.forEach((l, i) => { const d = document.createElement("div"); d.className = "letter-tile"; d.innerText = l; d.onclick = () => moveLetter(i, true); sBox.appendChild(d); });
-        selectedLetters.forEach((l, i) => { const d = document.createElement("div"); d.className = "letter-tile"; d.innerText = l; d.onclick = () => moveLetter(i, false); aBox.appendChild(d); });
-    }
-
-    function pronounceWord() {
-        if (!speechSupported) return;
-        usedPronounce = true; 
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(currentHindiWord);
-        u.lang = 'hi-IN';
-        window.speechSynthesis.speak(u);
-    }
-
-    function prevWord() { 
-        if (currentIndex > 0) {
-            currentIndex--; 
-            loadWord(); 
-        }
-    }
-    
-    function skipWord() { currentIndex++; loadWord(); }
-    function nextWord() { currentIndex++; loadWord(); }
-    
-    function clearAnswer() { 
-        availableLetters = availableLetters.concat(selectedLetters); 
-        selectedLetters = []; 
-        updateUI(); 
-        if (speechSupported && !solvedWordsGlobal.has(currentHindiWord)) {
-            document.getElementById("pronounce-btn").disabled = false;
-        }
-    }
-
-    // Start game
-    window.onload = () => {
-        changeLesson();
-    };
-
-    if (speechSupported) {
-        window.speechSynthesis.onvoiceschanged = () => {
-            if (window.speechSynthesis.getVoices().some(v => v.lang.includes('hi'))) {
-                document.getElementById("voice-info").innerText = "Voice Ready!";
-            }
-        };
-    } else {
-        document.getElementById("voice-info").innerText = "Voice not supported in this browser.";
-    }
-</script>
-</body>
-</html>
+                document.getElementById("status-message").innerText = `Correct! +${pointsEar
